@@ -8,10 +8,12 @@ Example inspired by Simon Ejdemyr: https://sejdemyr.github.io/r-tutorials/statis
 
 #### Reference links:
 1. MatchIt: https://cran.r-project.org/web/packages/MatchIt/vignettes/matchit.pdf
-2. Cobalt (optional library for matching plots and extra features): https://cran.r-project.org/web/packages/cobalt/vignettes/cobalt_A0_basic_use.html
+2. Cobalt (optional library for matching plots and extra features):  https://cran.r-project.org/web/packages/cobalt/vignettes/cobalt_A0_basic_use.html 
+#might be useful for the assignment
 3. kableExtra (for formatting data frames): https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
 4. Stargazer (for formatting model outputs): https://www.jakeruss.com/cheatsheets/stargazer/
 5. Video overview of matching concepts: https://fr.coursera.org/lecture/crash-course-in-causality/overview-of-matching-JQfPC
+#video can be very helpful
 
 ```{r warning=FALSE, message=FALSE}
 library(dplyr) # for data wrangling
@@ -29,22 +31,30 @@ First, let's read in the data. We will remove a few variables that won't be usef
 
 ```{r warning=FALSE, message=FALSE}
 ecls <- read.csv("data/ecls.csv")
+#whether or not being in a catholic school affects your math score
+#all these factors have wack labels, you could consider renaming them
 
 ecls <- ecls %>% 
   select(-childid, -race, -w3daded,
          -w3momed, -w3inccat)
+#select allows us to minus things (-) and remove them from our selection. Makes it easier to work with
 
 ecls %>%
-  group_by(catholic) %>%
-  summarise(n_students = n(),
+  group_by(catholic) %>% #whether they went to catholic school or not
+  summarise(n_students = n(), #summary statistics, we're looking for nstudents [n() gives you a count], mean math score [which is equal to the mean of factor name "c5r2mtsc_std"], and then we run it
             mean_math = mean(c5r2mtsc_std),
-            std_error = sd(c5r2mtsc_std) / sqrt(n_students)) %>% 
-  round(3) %>% # round the results
+            std_error = sd(c5r2mtsc_std) / sqrt(n_students)) %>% #she says this is "just for fun"; that's the formula for std.error
+  
+#this could count for our assignment. But we could make it a lot more aesthetic
+  
+  round(2) %>% # round the results to the 2nd decimal point
   kable() %>% # create kable table
   kable_styling() # view kable table
 ```
 
-We can see that we have many more students that did not attend Catholic school than those who did, and the Catholic school students have a mean math score that is higher. 
+We can see that we have many more students that did not attend Catholic school than those who did, and the Catholic school students have a mean math score that is higher.
+
+#The above is basically how you would answer the assignment
 
 ### NATE
 
@@ -53,25 +63,32 @@ First, let's calculate the NATE of Catholic school on student achievement (witho
 ```{r}
 t.test(ecls$c5r2mtsc_std ~ ecls$catholic)
 ```
+#we have a tiny p-value so it's statistically significant, 
+#mean in control group and in treatment group..
+#NATE's easy!
 
 ### Balance Table
 
 Now, let's create a balance table to identify the relevant co-variates in the unmatched dataset.
+#This is the hardest part of the task: point is to idenitfy which variables we want to match on, we want to find the confounder where the difference is the biggest and then match them.
 
 ```{r warning=FALSE, message=FALSE}
 ecls %>%
-  group_by(catholic) %>%
-  summarise_all(funs(mean(., na.rm = T))) %>% # summarize the mean of every variable
-  t() %>% # transpose data
-  as.data.frame() %>% # after transposing, convert from matrix to df
-  add_rownames("variable") %>% # rownames to explicit column
+  group_by(catholic) %>% #cleans up the table and allows us to observe based on their religion
+  summarise_all(funs(mean(., na.rm = T))) %>% # summarize the mean of every variable; it's a fancy new summarize function that does it all at once #funs tells us which function we want to use to summarise, na.rm=true as usual to remove N/As in our mean.
+  t() %>% # transpose data; i.e. to flip it so it's cleaner (just for your viewing pleasure) - tehcnically, your balance table is done here. But you can make it better from below onwards. Transpose turns it into a matrix from a dataframe.
+  as.data.frame() %>% # after transposing, convert from matrix to df so that we can work with it
+  add_rownames("variable") %>% # rownames to explicit column #this isn't necessary, but for looks
   rename(no_catholic = V1, catholic = V2) %>% # rename columns that are created by as.data.frame
   mutate(difference = catholic - no_catholic,
          differencePerc = difference / (catholic + no_catholic)) %>% # create new columns for difference between groups
-  mutate_if(is.numeric, round, 3) %>% # round numeric columns
-  kable() %>% # create kable table
-  kable_styling() # view kable table
+  #we're basically creating new columns too
+  mutate_if(is.numeric, round, 3) %>% # round numeric columns; because without is.numeric, it would've rounded off text too, which obviously doesn't work. 
+  kable() %>% # create kable table #this creates the html
+  kable_styling() # view kable table #does all the spicy stuff
+#we can make things interactive with kable, even adding _footnotes_
 ```
+#we're looking for variables with the biggest percentage differences, looks like they're income, food stamps, poverty - but they're all pretty similar, so we can just use income.
 
 We can see that the largest magnitude differences are for:
 
@@ -83,7 +100,7 @@ We can see that the largest magnitude differences are for:
 
 
 ### Exploring MatchIt
-
+#when we're doing matching, we then use the matchit library (only works on binary variables)
 MatchIt is designed for causal inference with a dichotomous treatment variable and a set of pretreatment control variables. Any number or type of dependent variables can be used. 
 
 The basic syntax is as follows: <br>
@@ -95,7 +112,8 @@ MatchIt is capable of using several matching methods:
 - Subclassification (*method = "subclass"*): When there are many covariates (or some covariates can take a large number of values),
 finding sufficient exact matches will often be impossible. The goal of subclassification is to form subclasses, such that in each the distribution (rather than the exact values) of covariates for the treated and control groups are as similar as possible.
 - Nearest Neighbor (*method = "nearest"*): Nearest neighbor matching selects the best control matches for each individual
-in the treatment group. Matching is done using a distance measure (propensity score) specified by the distance option (default = logit).
+in the treatment group. Matching is done using a distance measure (propensity score) specified by the distance option (default = logit). 
+#distance means propensity score
 - As well as optimal matching, full matching, genetic matching, and coarsened exact matching, all of which are detailed in the documentation.
 
 A few additional arguments are important to know about:
@@ -103,8 +121,10 @@ A few additional arguments are important to know about:
 - *distance*: this refers to propensity scores. There are many options for how to calculate these within MatchIt.
 - *discard*: specifies whether to discard units that fall outside some measure of support of the distance measure (default is "none", discard no units). For example, if some treated units have extremely high propensity scores that are higher than any control units, we could drop those.
 - *replace*: logical value indicating whether each control unit can be matched to more than one treated unit (default is *replace = FALSE*, each control unit is used at most once).
+#we usually will do replace = true
 - *ratio*: the number of control units to match to each treated unit (default = 1).
 - There are also some optional arguments for most of the matching methods, which you can read about in the documentation if you are interested.
+#we would just do ratio =  5 
 
 ### Exact Matching
 
@@ -120,8 +140,8 @@ We can use a combination of the results from our balance table and theory to ide
 # first we must omit missing values (MatchIt does not allow missings)
 match_data <- ecls %>% 
   select(catholic, c5r2mtsc_std, race_white, p5hmage, 
-         w3income, p5numpla, w3momed_hsb) %>% 
-  na.omit()
+         w3income, p5numpla, w3momed_hsb) %>%  #we are only selecting the variables we need (see above)
+  na.omit() #it's going to drop anyone with missing values
 
 # perform exact match
 exact_match <- matchit(catholic ~ race_white + p5hmage + w3income +
@@ -134,6 +154,7 @@ data_exact_match <- match.data(exact_match)
 
 # estimate t-test again
 t.test(data_exact_match$c5r2mtsc_std ~ data_exact_match$catholic)
+#those who didn't go to catholic school have a higher mean math scores, something happens once you've controll for it, can't really remember what it is. 
 ```
 
 Now we can see that the mean in the group that did not attend Catholic school is actually about 0.10 higher than the mean for those who did. The results are statistically significant given that the confidence interval does not contain zero, and we have a fairly small p-value.
@@ -150,34 +171,44 @@ ecls <- ecls %>%
 # estimate logit model
 m_ps <- glm(catholic ~ race_white + w3income_1k + 
               p5hmage + p5numpla + w3momed_hsb,
-            family = binomial(), 
+            family = binomial(), #this is a generalized linear model (glm)
             data = ecls)
 
 # use the stargazer package to view the output
 # NOTE: you MUST include results = "asis" in the chunk header for this to be visible once knitted
+#see ```{r, results = 'asis'}
+
 stargazer(m_ps, type = "html")
 
 # extract predicted probabilities
 # type = "response" option tells R to output probabilities of the form P(Y = 1|X)
-prs_df <- data.frame(pr_score = predict(m_ps, type = "response"),
+prs_df <- data.frame(pr_score = predict(m_ps, type = "response"), 
                      catholic = m_ps$model$catholic) # the actual values
+#from our logistic regression,  we want to grab the mode, and the catholic thing from that.
+#allows us to know for sure that they're going together.
+
+#we only use this for plotting, not matching.
 ```
 
 Let's plot the propensity scores by treatment group to explore common support:
 
 ```{r warning=FALSE, message=FALSE}
 prs_df %>%
-  ggplot(aes(x = pr_score, fill = factor(catholic))) +
-  geom_density(alpha = 0.5) +
+  ggplot(aes(x = pr_score, fill = factor(catholic))) + #fill is the color, catholic is just 1&0, so we want to convert it into a factor
+  geom_density(alpha = 0.5) + #allows us to make it see through (like opacity)
   labs(x = "Propensity Score Distribution: Treatment and Control Groups",
        fill = "Catholic School Attendance")
 ```
+
+#What is this supposed to tell us??? try to figure that out.
 
 ### Non-Exact Matching
 
 MatchIt can generate propensity scores itself, so we don't need to manually go through the process above. Let's try putting together a non-exact matching formula yourself! Try:
 
-- nearest neighbor matching
+#same thing with exact match, but different variables
+
+- nearest neighbor matching 
 - with replacement
 - with a one-to-one ratio
 - on the *match_data* dataset
@@ -188,14 +219,19 @@ All the info you need to complete this is available in the Exploring Matching se
 ```{r}
 one_match <- matchit(catholic ~ race_white + w3income + p5hmage +
                        p5numpla + w3momed_hsb,
-                     method = "nearest", 
+                     method = "nearest", #this is the method for non-exact matching
                      ratio = 1, 
                      replace = TRUE,
-                     data = match_data)
+                     data = match_data) #note that the data source is the same
 
 summary(one_match)
-```
+#we dropped a lot of people when we matched.
+#we can plot here:
 
+plot(one_match, type = "hist")
+#we can look into the cobalt package to do other one-liner graphs
+#RHS has a very similar look in terms of the distribution of propensity scores
+```
 We can interpret the resulting output as follows:
 
 - Summary of balance for all data: Comparison of the means for all the data without matching
